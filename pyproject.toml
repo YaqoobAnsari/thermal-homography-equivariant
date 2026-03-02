@@ -1,0 +1,202 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thermal-homography"
+version = "0.1.0"
+description = "E(2)-Equivariant Graph Neural Networks for Thermal Homography Estimation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "ECCV 2026 Research Team"}
+]
+keywords = [
+    "thermal imaging",
+    "homography",
+    "equivariant networks",
+    "graph neural networks",
+    "computer vision",
+    "deep learning"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "torch>=2.0.0",
+    "torch-geometric>=2.4.0",
+    "escnn>=1.0.0",
+    "kornia>=0.7.0",
+    "albumentations>=1.3.0",
+    "pytorch-lightning>=2.0.0",
+    "hydra-core>=1.3.0",
+    "wandb>=0.15.0",
+    "einops>=0.6.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
+    "tqdm>=4.65.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.5.0",
+]
+
+[project.scripts]
+thermal-train = "src.training.train:main"
+thermal-eval = "src.evaluation.eval_splits:main"
+thermal-verify = "scripts.verify_setup:main"
+
+[project.urls]
+Homepage = "https://github.com/your-org/thermal-homography"
+Documentation = "https://github.com/your-org/thermal-homography#readme"
+Repository = "https://github.com/your-org/thermal-homography"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "scripts*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.yml"]
+
+# Black configuration
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | data
+)/
+'''
+
+# Ruff configuration
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "data",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "W",   # pycodestyle warnings
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "E402",  # module level import not at top (needed for sys.path in scripts)
+    "B008",  # do not perform function calls in argument defaults
+    "B905",  # zip without strict= (works fine, strict is Python 3.10+)
+    "C901",  # too complex
+    "N803",  # argument name should be lowercase (H is standard for homography)
+    "N806",  # variable in function should be lowercase
+    "N812",  # lowercase imported as non-lowercase (F for functional is common)
+    "SIM102", # nested if statements (sometimes clearer)
+    "SIM108", # ternary operator (sometimes less readable)
+    "SIM117", # multiple with statements (sometimes clearer)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+# Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: marks tests that require GPU",
+    "integration: marks integration tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+# MyPy configuration
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = [
+    "data/",
+    "notebooks/",
+    "build/",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

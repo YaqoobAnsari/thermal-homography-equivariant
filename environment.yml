@@ -1,0 +1,99 @@
+# Conda environment for thermal-homography
+# Development: macOS (CPU)
+# Production: Linux server with GPU (CUDA 12.1)
+#
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate thermal-homography
+
+name: thermal-homography
+channels:
+  - pytorch
+  - pyg
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python version
+  - python=3.11
+
+  # PyTorch (CPU for Mac development, GPU on server)
+  - pytorch=2.2
+  - torchvision
+  - torchaudio
+
+  # PyTorch Geometric (Graph Neural Networks)
+  - pyg=2.5
+  - pytorch-scatter
+  - pytorch-sparse
+  - pytorch-cluster
+
+  # Scientific computing
+  - numpy>=1.24
+  - scipy>=1.11
+  - scikit-learn>=1.3
+  - pandas>=2.0
+
+  # Image processing
+  - opencv>=4.8
+  - pillow>=10.0
+  - scikit-image>=0.21
+
+  # Visualization
+  - matplotlib>=3.8
+  - seaborn>=0.13
+  - plotly>=5.18
+
+  # Jupyter
+  - jupyter
+  - jupyterlab
+  - ipywidgets
+
+  # Development tools
+  - pytest>=7.4
+  - pytest-cov
+  - black>=23.0
+  - ruff>=0.1
+  - pre-commit>=3.5
+  - mypy>=1.7
+
+  # pip packages
+  - pip
+  - pip:
+    # E(2)-equivariant networks
+    - escnn>=1.0.12
+
+    # Differentiable geometry operations
+    - kornia>=0.7.0
+
+    # Image augmentation
+    - albumentations>=1.3.1
+
+    # Configuration management
+    - hydra-core>=1.3.2
+    - omegaconf>=2.3.0
+
+    # Experiment tracking
+    - wandb>=0.16.0
+
+    # Training framework
+    - pytorch-lightning>=2.1.0
+
+    # Tensor operations
+    - einops>=0.7.0
+
+    # Progress bars
+    - tqdm>=4.66.0
+
+    # YAML handling
+    - pyyaml>=6.0
+
+    # Type hints
+    - typing-extensions>=4.8.0
+
+    # Rich terminal output
+    - rich>=13.7.0
+
+    # HTTP requests (for dataset download)
+    - requests>=2.31.0
+    - gdown>=5.1.0

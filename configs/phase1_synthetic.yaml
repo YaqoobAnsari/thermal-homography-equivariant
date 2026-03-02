@@ -1,0 +1,62 @@
+# Phase 1: Synthetic Validation Experiment
+# Goal: Verify E(2)-equivariance works on checkerboard images
+# Success criterion: <5° rotation error, <10px translation error
+
+seed: 42
+experiment_name: "phase1_synthetic_validation"
+
+model:
+  type: "e2_gnn"
+  feature_dim: 32
+  grid_size: 16  # 16x16 = 256 nodes (fast iteration)
+  gnn_num_layers: 2
+  gnn_hidden_dim: 64
+  use_lrft: true
+  lrft_out_nodes: 64
+  lrft_rank: 32
+  feature_extractor: "patch"  # or "cnn"
+  use_gradient_features: true
+
+loss:
+  corner_weight: 1.0
+  rotation_weight: 0.1
+  translation_weight: 0.1
+  rank_weight: 0.01
+
+data:
+  synthetic: true
+  pattern_type: "checkerboard"  # or "blobs"
+  n_train_samples: 1000
+  n_val_samples: 200
+  image_size: [256, 256]
+  # Synthetic data generation
+  rotation_range: [-30, 30]  # degrees
+  translation_range: [-30, 30]  # pixels
+  scale_range: [0.95, 1.05]
+  noise_std: 10
+
+training:
+  batch_size: 8
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  warmup_epochs: 5
+  max_epochs: 100
+  num_workers: 0  # Mac compatibility
+  precision: 32
+  gradient_clip: 1.0
+  accumulate_grad_batches: 1
+  val_check_interval: 1.0
+  early_stopping_patience: 20
+  run_test: true
+
+logging:
+  use_wandb: false
+  wandb_project: "thermal-homography"
+  log_dir: "logs/phase1"
+  log_every_n_steps: 10
+
+# Phase 1 specific
+validation:
+  test_rotation_equivariance: true
+  equivariance_angles: [0, 15, 30, 45, 60, 90, 120, 150, 180]
+  numerical_tolerance: 1.0e-4
