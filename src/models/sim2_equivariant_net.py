@@ -26,7 +26,7 @@ Why this works (unlike the broken version):
 - Previous: GroupPooling → INVARIANT features → Can't detect rotation
 - New: NO GroupPooling → EQUIVARIANT features → Cyclic shift encodes rotation
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 

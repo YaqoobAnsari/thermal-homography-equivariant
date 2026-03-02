@@ -12,7 +12,7 @@ all components of the Sim(2) homography estimation:
 
 All losses are normalized to [0, 1] range for balanced gradient contributions.
 
-Key Insight (2026-02-01):
+Key Insight:
     The core paradox: model starts perfect at random init but training destroys
     correlation peaks. This happens because the loss supervises outputs, not the
     intermediate correlation maps. The CNN learns shortcuts that minimize output

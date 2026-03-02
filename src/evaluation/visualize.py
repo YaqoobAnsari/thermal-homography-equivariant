@@ -1,7 +1,7 @@
 """
 Visualization Tools for Thermal Homography
 
-Generates figures for ECCV paper:
+Generates figures for paper:
 1. Homography visualization (warped images, correspondences)
 2. Rotation equivariance plots
 3. Similarity matrix visualization
@@ -619,7 +619,7 @@ def create_paper_figures(
     device: torch.device = torch.device("cpu"),
 ):
     """
-    Generate all figures for ECCV paper.
+    Generate all figures for paper.
 
     Args:
         model: Trained model

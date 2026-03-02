@@ -238,7 +238,7 @@ def generate_thermal_blobs(
 
 
 # =============================================================================
-# NEW PATTERN GENERATORS (Tier-based taxonomy for diagnostic testing)
+# PATTERN GENERATORS (Tier-based taxonomy for diagnostic testing)
 # =============================================================================
 
 # -----------------------------------------------------------------------------

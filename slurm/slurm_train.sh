@@ -16,9 +16,7 @@
 # SLURM Training Script for Thermal Homography
 # =============================================================================
 # Usage:
-#   sbatch scripts/slurm_train.sh                    # Phase 1: Synthetic
-#   sbatch scripts/slurm_train.sh phase2_search      # Phase 2: HPO
-#   sbatch scripts/slurm_train.sh phase3_full        # Phase 3: Full
+#   sbatch slurm/slurm_train.sh                      # Phase 1: Synthetic
 #
 # Resource Limits (punim2769):
 #   - Max 200 jobs in queue

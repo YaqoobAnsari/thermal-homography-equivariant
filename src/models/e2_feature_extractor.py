@@ -13,13 +13,13 @@ This module provides two types of E2-equivariant feature extractors:
    - Good for: Rotation DETECTION via cyclic correlation
    - This is what Sim2EquivariantNet uses
 
-Key insight (2026-01-30):
+Key insight:
 - INVARIANT features are useful for classification but HARMFUL for geometric estimation
 - To DETECT rotation, we need EQUIVARIANT features that transform predictably
 
 Using the escnn library for mathematically-guaranteed equivariance.
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 
@@ -413,7 +413,7 @@ class E2Procrustes(nn.Module):
 
         rotation = torch.atan2(R[:, 1, 0], R[:, 0, 0])
 
-        # CRITICAL FIX: Scale formula must use UNWEIGHTED centered points
+        # Scale formula must use UNWEIGHTED centered points
         # Correct formula: scale = trace(Σ) / ||P_centered||²_F
         # Previous bug: used weighted points (src_w) which biased scale estimation
         P_norm_sq = (src_centered ** 2).sum(dim=[1, 2])  # Unweighted

@@ -25,7 +25,7 @@ Key advantages of Procrustes + ESCNN approach:
 - Differentiable for end-to-end training
 - Works on any pattern without retraining
 
-This is the main model for the ECCV 2026 submission.
+Graph-based model using E(2)-equivariant message passing.
 """
 
 import torch
@@ -34,6 +34,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import Tensor
 
+from src.utils.homography import homography_matrix_to_vec, homography_vec_to_matrix
 from src.utils.logging_config import get_logger
 
 from .e2_layers import E2EquivariantGNN
@@ -51,7 +52,6 @@ class PatchFeatureExtractor(nn.Module):
 
     Colormap-invariant design using gradient-based features.
 
-    CRITICAL FIX (2026-01-30):
     - Previous version used gradient ORIENTATION which is rotation-DEPENDENT
     - Now uses ONLY gradient MAGNITUDE which is rotation-INVARIANT
     - This ensures features don't change when image rotates
@@ -138,7 +138,7 @@ class PatchFeatureExtractor(nn.Module):
             # Compute gradients
             magnitude, orientation = self.compute_gradients(image)
 
-            # CRITICAL FIX: Use ONLY magnitude (rotation-INVARIANT)
+            # Use ONLY magnitude (rotation-INVARIANT)
             # DO NOT use orientation (rotation-DEPENDENT)
             # Rotation is detected by ImageGradientOrientationEstimator in the canonicalizer
             grad_features = magnitude  # [B, 1, H, W] - rotation invariant!
@@ -446,7 +446,7 @@ class ThermalHomographyNet(nn.Module):
         # Sim(2) equivariance options
         # use_sim2_equivariant: NEW architecture with true Sim(2) detection capability
         # use_procrustes: Legacy architecture (deprecated - has detection issues)
-        use_sim2_equivariant: bool = False,  # NEW: True Sim(2) detection via cyclic correlation
+        use_sim2_equivariant: bool = False,  # True Sim(2) detection via cyclic correlation
         sim2_num_rotations: int = 16,  # C16 group for cyclic correlation
         sim2_feature_channels: int = 32,  # Feature channels for equivariant encoder
         use_procrustes: bool = True,  # Legacy: Procrustes + ESCNN (deprecated)
@@ -469,7 +469,7 @@ class ThermalHomographyNet(nn.Module):
         self.use_sim2_equivariant = use_sim2_equivariant
         self.use_procrustes = use_procrustes and not use_sim2_equivariant  # Disable if using new arch
 
-        # NEW: Sim(2) Equivariant Architecture (2026-01-30)
+        # Sim(2) Equivariant Architecture
         # This replaces the broken ProcrustesCanonicalizer approach
         if use_sim2_equivariant:
             self.sim2_net = Sim2EquivariantNet(
@@ -638,15 +638,14 @@ class ThermalHomographyNet(nn.Module):
         B = image_src.shape[0]
         device = image_src.device
 
-        # NEW (2026-01-30): Sim(2) Equivariant Architecture
+        # Sim(2) Equivariant Architecture
         # Uses cyclic correlation for rotation + Procrustes for scale/translation
         # This is the CORRECT approach - previous approach was broken
         if self.use_sim2_equivariant:
             return self.sim2_net(image_src, image_tgt)
 
-        # DEPRECATED: Procrustes-based path (has detection issues!)
+        # Legacy Procrustes-based path
         # Uses ESCNN rotation-invariant features + Procrustes SVD
-        # WARNING: GroupPooling makes features INVARIANT, breaking detection
         if self.use_procrustes:
             # Get transformation directly via Procrustes
             procrustes_result = self.procrustes_canonicalizer(image_src, image_tgt)
@@ -697,64 +696,3 @@ class ThermalHomographyNet(nn.Module):
             "positions_src": positions_src,
             "positions_tgt": positions_tgt,
         }
-
-
-def homography_vec_to_matrix(h_vec: Tensor) -> Tensor:
-    """
-    Convert 8D homography vector to 3x3 matrix.
-
-    The vector represents h11, h12, h13, h21, h22, h23, h31, h32
-    with h33 = 1 (normalized homography).
-
-    Args:
-        h_vec: [B, 8] homography parameters
-
-    Returns:
-        H: [B, 3, 3] homography matrices
-    """
-    B = h_vec.shape[0]
-    device = h_vec.device
-
-    # Construct matrix
-    H = torch.zeros(B, 3, 3, device=device, dtype=h_vec.dtype)
-    H[:, 0, 0] = h_vec[:, 0]
-    H[:, 0, 1] = h_vec[:, 1]
-    H[:, 0, 2] = h_vec[:, 2]
-    H[:, 1, 0] = h_vec[:, 3]
-    H[:, 1, 1] = h_vec[:, 4]
-    H[:, 1, 2] = h_vec[:, 5]
-    H[:, 2, 0] = h_vec[:, 6]
-    H[:, 2, 1] = h_vec[:, 7]
-    H[:, 2, 2] = 1.0
-
-    return H
-
-
-def homography_matrix_to_vec(H: Tensor) -> Tensor:
-    """
-    Convert 3x3 homography matrix to 8D vector.
-
-    Args:
-        H: [B, 3, 3] homography matrices (normalized so H[2,2] = 1)
-
-    Returns:
-        h_vec: [B, 8] homography parameters
-    """
-    # Normalize so H[2,2] = 1
-    H = H / (H[:, 2:3, 2:3] + 1e-8)
-
-    h_vec = torch.stack(
-        [
-            H[:, 0, 0],
-            H[:, 0, 1],
-            H[:, 0, 2],
-            H[:, 1, 0],
-            H[:, 1, 1],
-            H[:, 1, 2],
-            H[:, 2, 0],
-            H[:, 2, 1],
-        ],
-        dim=-1,
-    )
-
-    return h_vec

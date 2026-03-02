@@ -14,7 +14,7 @@ The Solution:
 
 This is similar to optical flow, but designed for larger transformations.
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 

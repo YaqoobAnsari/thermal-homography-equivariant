@@ -21,7 +21,7 @@ The closed-form solution is:
 This is a simplified version of full Procrustes that doesn't need to
 estimate rotation (since it was already handled).
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 

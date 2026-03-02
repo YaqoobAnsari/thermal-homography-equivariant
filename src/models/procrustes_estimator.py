@@ -148,7 +148,7 @@ class ProcrustesRotationEstimator(nn.Module):
 
         # Scale
         if self.estimate_scale:
-            # CRITICAL FIX: Use UNWEIGHTED centered points for scale
+            # Use UNWEIGHTED centered points for scale
             # Correct formula: scale = trace(Σ) / ||P_centered||²_F
             # Previous bug: used weighted P (P_weighted) which biased scale
             P_norm_sq = (P ** 2).sum(dim=[1, 2])  # [B] - Unweighted!
@@ -274,7 +274,7 @@ class DifferentiableProcrustesLayer(nn.Module):
 
         rotation = torch.atan2(R[:, 1, 0], R[:, 0, 0])
 
-        # Scale - CRITICAL FIX: Use UNWEIGHTED centered points
+        # Scale - Use UNWEIGHTED centered points
         # Correct formula: scale = trace(Σ) / ||P_centered||²_F
         P_norm_sq = (P ** 2).sum(dim=[1, 2])  # Unweighted
         scale = S.sum(dim=1) / (P_norm_sq + 1e-8)

@@ -1,7 +1,7 @@
 """
 Evaluation on Different Data Splits
 
-Implements evaluation protocols for ECCV submission:
+Implements evaluation protocols:
 1. Temporal split: Train scenes 1-10 → Test scenes 11-12
 2. Geometric split: Train rotations <30° → Test >45°
 3. Colormap split: Train "hot" → Test "jet"
@@ -255,7 +255,7 @@ def evaluate_all_splits(
     device: torch.device = torch.device("cpu"),
 ) -> dict[str, Any]:
     """
-    Run all evaluation splits for ECCV submission.
+    Run all evaluation splits.
 
     Args:
         model: Model to evaluate

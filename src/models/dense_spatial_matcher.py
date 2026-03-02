@@ -15,7 +15,7 @@ Architecture:
 3. Soft-argmax to get sub-pixel correspondences
 4. Return matched positions and confidence
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 

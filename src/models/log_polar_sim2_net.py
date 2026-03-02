@@ -18,7 +18,7 @@ Key Property:
     The log-polar transform makes a standard CNN scale-rotation equivariant
     because scale and rotation become translations in log-polar space.
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 
@@ -94,7 +94,7 @@ class LearnedLogPolarEncoder(nn.Module):
         r_min: float = 0.05,
         r_max: float = 0.9,
         feature_channels: int = 64,
-        use_fft_magnitude: bool = True,  # NEW: Enable FMT by default
+        use_fft_magnitude: bool = True,  # Enable FMT by default
     ):
         super().__init__()
 
@@ -177,7 +177,7 @@ class LogPolarCorrelationEstimator(nn.Module):
         r_max: float = 0.9,
         feature_channels: int = 64,
         temperature: float = 50.0,
-        use_fft_magnitude: bool = True,  # NEW: Enable FMT by default
+        use_fft_magnitude: bool = True,  # Enable FMT by default
     ):
         super().__init__()
 
@@ -445,8 +445,8 @@ class LogPolarSim2Net(nn.Module):
         sr_temperature: float = 50.0,
         t_temperature: float = 20.0,
         use_learned_features: bool = True,
-        use_fft_magnitude: bool = True,  # NEW: FMT mode (translation-invariant)
-        use_disambiguation: bool = True,  # NEW: 180° disambiguation
+        use_fft_magnitude: bool = True,  # FMT mode (translation-invariant)
+        use_disambiguation: bool = True,  # 180° disambiguation
     ):
         """
         Initialize LogPolarSim2Net.

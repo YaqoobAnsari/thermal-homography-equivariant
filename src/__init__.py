@@ -5,7 +5,7 @@ A keypoint-free approach to thermal image alignment using geometric deep learnin
 """
 
 __version__ = "0.1.0"
-__author__ = "ECCV 2026 Research Team"
+__author__ = "Yaqoob Ansari"
 
 # Use centralized config for path management (lazy initialization)
 # Explicit re-exports for public API

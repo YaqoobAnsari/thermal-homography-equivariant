@@ -16,7 +16,7 @@ Key Properties:
 This is a well-established technique used in Fourier-Mellin transform for
 image registration, and is simpler than SESN-style steerable filters.
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 

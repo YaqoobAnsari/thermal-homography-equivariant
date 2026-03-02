@@ -14,7 +14,7 @@ For C_N equivariant features:
 This is the DETECTION approach (not invariance). We use equivariant
 (not invariant) features specifically so we can detect the transformation.
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 

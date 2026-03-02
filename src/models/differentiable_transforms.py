@@ -17,7 +17,7 @@ Key functions:
 - apply_sim2: Apply full Sim(2) transformation
 - build_sim2_homography: Build homography matrix from (θ, s, t)
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 

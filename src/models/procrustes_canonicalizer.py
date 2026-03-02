@@ -19,9 +19,9 @@ The approach:
 References:
 - Schonemann (1966): Orthogonal Procrustes problem
 - E2-CNN (Weiler & Cesa, 2019): Steerable CNNs for equivariance
-- ECCV 2026 Submission: Thermal Homography with Sim(2) Equivariance
+- Thermal Homography with Sim(2) Equivariance
 
-Author: ECCV 2026 Submission
+Author: Yaqoob Ansari
 Date: 2026-01-30
 """
 
