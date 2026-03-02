@@ -16,6 +16,7 @@ from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 
+from src.utils.geometry import homography_matrix_to_vec_np
 from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -327,19 +328,10 @@ class ThermalPairDataset(Dataset):
         """
         Convert 3x3 homography matrix to 8D vector representation.
 
-        Args:
-            H: 3x3 homography matrix.
-
-        Returns:
-            8D vector [h11, h12, h13, h21, h22, h23, h31, h32] with h33=1.
+        Delegates to the canonical numpy implementation in src.utils.geometry.
+        See also: src.utils.homography.homography_matrix_to_vec (torch version).
         """
-        # Normalize so H[2,2] = 1
-        H = H / (H[2, 2] + 1e-8)
-        return np.array([
-            H[0, 0], H[0, 1], H[0, 2],
-            H[1, 0], H[1, 1], H[1, 2],
-            H[2, 0], H[2, 1],
-        ], dtype=np.float32)
+        return homography_matrix_to_vec_np(H)
 
     def validate_dataset(self, check_files: bool = True) -> Dict[str, Any]:
         """

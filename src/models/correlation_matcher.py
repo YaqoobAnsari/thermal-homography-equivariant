@@ -159,36 +159,30 @@ class CorrelationMatcher(nn.Module):
         grid_y, grid_x = torch.meshgrid(y, x, indexing='ij')
         pos_grid = torch.stack([grid_x, grid_y], dim=-1)  # [H, W, 2]
 
-        if self.search_radius is None:
-            # Global correlation search
-            # Reshape for matrix multiplication: [B, D, H*W]
-            src_flat = features_src.view(B, D, -1)
-            tgt_flat = features_tgt.view(B, D, -1)
+        # Global correlation search
+        # Reshape for matrix multiplication: [B, D, H*W]
+        src_flat = features_src.view(B, D, -1)
+        tgt_flat = features_tgt.view(B, D, -1)
 
-            # Correlation: [B, H*W_src, H*W_tgt]
-            temp = self.log_temp.exp()
-            correlation = torch.bmm(src_flat.transpose(1, 2), tgt_flat) / temp
+        # Correlation: [B, H*W_src, H*W_tgt]
+        temp = self.log_temp.exp()
+        correlation = torch.bmm(src_flat.transpose(1, 2), tgt_flat) / temp
 
-            # Softmax over target positions
-            weights = F.softmax(correlation, dim=-1)  # [B, H*W_src, H*W_tgt]
+        # Softmax over target positions
+        weights = F.softmax(correlation, dim=-1)  # [B, H*W_src, H*W_tgt]
 
-            # Target position grid: [H*W, 2]
-            pos_flat = pos_grid.view(-1, 2)  # [H*W, 2]
+        # Target position grid: [H*W, 2]
+        pos_flat = pos_grid.view(-1, 2)  # [H*W, 2]
 
-            # Weighted average of target positions: [B, H*W_src, 2]
-            matched_pos_flat = torch.bmm(weights, pos_flat.unsqueeze(0).expand(B, -1, -1))
-            matched_pos = matched_pos_flat.view(B, H, W, 2)
+        # Weighted average of target positions: [B, H*W_src, 2]
+        matched_pos_flat = torch.bmm(weights, pos_flat.unsqueeze(0).expand(B, -1, -1))
+        matched_pos = matched_pos_flat.view(B, H, W, 2)
 
-            # Confidence: negative entropy (high confidence = peaked distribution)
-            entropy = -torch.sum(weights * torch.log(weights + 1e-8), dim=-1)
-            max_entropy = math.log(H * W)
-            confidence = 1.0 - entropy / max_entropy
-            confidence = confidence.view(B, H, W)
-
-        else:
-            # Local correlation search (more efficient for large images)
-            # Use unfold to extract patches
-            raise NotImplementedError("Local search not yet implemented")
+        # Confidence: negative entropy (high confidence = peaked distribution)
+        entropy = -torch.sum(weights * torch.log(weights + 1e-8), dim=-1)
+        max_entropy = math.log(H * W)
+        confidence = 1.0 - entropy / max_entropy
+        confidence = confidence.view(B, H, W)
 
         # Compute flow (offset from source to matched target)
         src_pos = pos_grid.unsqueeze(0).expand(B, -1, -1, -1)  # [B, H, W, 2]

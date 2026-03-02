@@ -15,6 +15,29 @@ from src.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def homography_matrix_to_vec_np(H: np.ndarray) -> np.ndarray:
+    """
+    Convert 3x3 homography matrix to 8D vector (numpy version).
+
+    Normalizes so H[2,2] = 1 and returns [h11, h12, h13, h21, h22, h23, h31, h32].
+
+    This is the numpy equivalent of src.utils.homography.homography_matrix_to_vec
+    (which operates on torch tensors and supports batched inputs).
+
+    Args:
+        H: [3, 3] homography matrix (numpy).
+
+    Returns:
+        [8] vector of homography parameters.
+    """
+    H = H / (H[2, 2] + 1e-8)
+    return np.array([
+        H[0, 0], H[0, 1], H[0, 2],
+        H[1, 0], H[1, 1], H[1, 2],
+        H[2, 0], H[2, 1],
+    ], dtype=np.float32)
+
+
 def compute_corner_error(
     H_pred: np.ndarray,
     H_gt: np.ndarray,

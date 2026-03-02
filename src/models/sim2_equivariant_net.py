@@ -36,106 +36,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from escnn import gspaces
-from escnn import nn as enn
-
 from src.utils.logging_config import get_logger
+from .e2_feature_extractor import E2EquivariantEncoder
 from .cyclic_rotation_estimator import CyclicRotationEstimator
 from .dense_spatial_matcher import AlignedDenseMatcher
 from .procrustes_st import ProcrustesScaleTranslation
 from .differentiable_transforms import rotate_image, build_sim2_homography
 
 logger = get_logger(__name__)
-
-
-class E2EquivariantEncoder(nn.Module):
-    """
-    E2-Equivariant Feature Encoder using Regular Representation.
-
-    CRITICAL: This encoder does NOT use GroupPooling!
-
-    The regular representation has the property that rotation by
-    k × (360°/N) cyclically shifts feature channels by k positions.
-    This is what enables rotation DETECTION via cyclic correlation.
-
-    GroupPooling would make features INVARIANT to rotation, which
-    destroys the geometric information we need for detection.
-
-    Output shape: [B, C, N_rot, H, W]
-    - C: number of feature channels
-    - N_rot: number of rotation channels (discrete rotations)
-    - H, W: spatial dimensions
-
-    Under rotation by k × (360°/N):
-        output[:, :, r, :, :] → output[:, :, (r-k) mod N, :, :]
-    """
-
-    def __init__(
-        self,
-        num_rotations: int = 16,
-        feature_channels: int = 32,
-        in_channels: int = 1,
-    ):
-        super().__init__()
-
-        self.num_rotations = num_rotations
-        self.feature_channels = feature_channels
-
-        # Cyclic group C_N
-        self.gspace = gspaces.rot2dOnR2(N=num_rotations)
-
-        # Input: scalar field (grayscale image)
-        self.in_type = enn.FieldType(
-            self.gspace,
-            in_channels * [self.gspace.trivial_repr]
-        )
-
-        # Hidden: regular representation - features SHIFT under rotation
-        self.hidden_type = enn.FieldType(
-            self.gspace,
-            feature_channels * [self.gspace.regular_repr]
-        )
-
-        # Equivariant encoder - NO GroupPooling!
-        self.encoder = enn.SequentialModule(
-            enn.R2Conv(self.in_type, self.hidden_type, kernel_size=7, padding=3),
-            enn.InnerBatchNorm(self.hidden_type),
-            enn.ReLU(self.hidden_type),
-            enn.R2Conv(self.hidden_type, self.hidden_type, kernel_size=5, padding=2),
-            enn.InnerBatchNorm(self.hidden_type),
-            enn.ReLU(self.hidden_type),
-            enn.R2Conv(self.hidden_type, self.hidden_type, kernel_size=3, padding=1),
-            enn.InnerBatchNorm(self.hidden_type),
-            enn.ReLU(self.hidden_type),
-        )
-
-        logger.info(f"E2EquivariantEncoder: C{num_rotations}, {feature_channels} feature channels")
-        logger.info(f"  Output shape: [B, {feature_channels}, {num_rotations}, H, W]")
-        logger.info(f"  NO GroupPooling - features are EQUIVARIANT (shift under rotation)")
-
-    def forward(self, image: Tensor) -> Tensor:
-        """
-        Extract equivariant features.
-
-        Args:
-            image: [B, C, H, W] input image (C=1 for grayscale)
-
-        Returns:
-            features: [B, feature_channels, N_rot, H, W] equivariant features
-        """
-        # Handle grayscale
-        if image.shape[1] == 3:
-            image = image.mean(dim=1, keepdim=True)
-
-        x = enn.GeometricTensor(image, self.in_type)
-        x = self.encoder(x)
-
-        # Reshape from [B, C*N_rot, H, W] to [B, C, N_rot, H, W]
-        B = image.shape[0]
-        H, W = x.tensor.shape[2:]
-        features = x.tensor.view(B, self.feature_channels, self.num_rotations, H, W)
-
-        return features
 
 
 class InvariantFeatureEncoder(nn.Module):

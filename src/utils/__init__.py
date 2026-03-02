@@ -14,6 +14,7 @@ from .equivariance_tests import (
 )
 from .geometry import (
     compute_corner_error,
+    homography_matrix_to_vec_np,
     warp_image,
 )
 from .homography import (
@@ -37,6 +38,7 @@ __all__ = [
     "test_equivariance_numerical",
     "test_model_equivariance",
     "compute_corner_error",
+    "homography_matrix_to_vec_np",
     "warp_image",
     "get_logger",
     "setup_logging",

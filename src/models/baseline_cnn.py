@@ -9,6 +9,8 @@ This serves as the baseline to show that our FMT approach generalizes
 better to unseen rotations.
 """
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -96,7 +98,7 @@ class BaselineCNN(nn.Module):
 
         return {
             'rotation': rotation,
-            'rotation_deg': rotation * 180 / 3.14159,
+            'rotation_deg': rotation * 180 / math.pi,
             'scale': scale,
             'log_scale': log_scale,
             'translation': torch.stack([tx, ty], dim=-1),

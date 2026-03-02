@@ -9,6 +9,7 @@ Generates figures for paper:
 """
 
 from pathlib import Path
+from typing import Any
 
 import cv2
 import matplotlib.pyplot as plt
@@ -496,7 +497,7 @@ def create_failure_case_report(
     n_worst: int = 10,
     output_dir: str | None = None,
     device: torch.device = torch.device("cpu"),
-) -> dict[str, any]:
+) -> dict[str, Any]:
     """
     Generate report of worst-performing samples.
 

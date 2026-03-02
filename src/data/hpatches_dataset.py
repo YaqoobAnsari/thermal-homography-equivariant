@@ -22,6 +22,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
+from src.utils.geometry import homography_matrix_to_vec_np
 from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -243,14 +244,10 @@ class HPatchesDataset(Dataset):
         """
         Convert 3x3 homography to 8D vector representation.
 
-        Normalizes so H[2,2] = 1 and returns [h11, h12, h13, h21, h22, h23, h31, h32].
+        Delegates to the canonical numpy implementation in src.utils.geometry.
+        See also: src.utils.homography.homography_matrix_to_vec (torch version).
         """
-        H = H / (H[2, 2] + 1e-8)
-        return np.array([
-            H[0, 0], H[0, 1], H[0, 2],
-            H[1, 0], H[1, 1], H[1, 2],
-            H[2, 0], H[2, 1],
-        ], dtype=np.float32)
+        return homography_matrix_to_vec_np(H)
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -322,6 +319,12 @@ def compute_corner_error(
 ) -> float:
     """
     Compute average corner error in pixels.
+
+    Note: A canonical numpy version also exists in src.utils.geometry.compute_corner_error
+    (uses cv2.perspectiveTransform, defaults to 256x256). A batched torch version exists in
+    src.training.metrics.corner_error. This local version is kept because it uses a different
+    default image_size (480x640) matching the HPatches evaluation convention and implements
+    the transform manually without cv2.
 
     Args:
         H_pred: Predicted homography [3, 3]

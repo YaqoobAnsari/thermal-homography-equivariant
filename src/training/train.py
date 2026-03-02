@@ -8,6 +8,7 @@ Implements PyTorch Lightning training with:
 - Learning rate scheduling
 """
 
+from collections import deque
 from pathlib import Path
 
 import pytorch_lightning as pl
@@ -184,10 +185,10 @@ class TrainingVisualizationCallback(pl.Callback):
         super().__init__()
         self.output_dir = Path(output_dir)
         self.plot_frequency = plot_frequency
-        self.train_losses = []
-        self.val_losses = []
-        self.val_corner_errors = []
-        self.epochs = []
+        self.train_losses = deque(maxlen=1000)
+        self.val_losses = deque(maxlen=1000)
+        self.val_corner_errors = deque(maxlen=1000)
+        self.epochs = deque(maxlen=1000)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         """Record training loss."""

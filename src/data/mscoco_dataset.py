@@ -24,6 +24,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
+from src.utils.geometry import homography_matrix_to_vec_np
 from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -258,13 +259,12 @@ class WarpedMSCOCODataset(Dataset):
             raise ValueError(f"Unknown mode: {self.mode}")
 
     def _homography_to_vec(self, H: np.ndarray) -> np.ndarray:
-        """Convert 3x3 homography to 8D vector."""
-        H = H / (H[2, 2] + 1e-8)
-        return np.array([
-            H[0, 0], H[0, 1], H[0, 2],
-            H[1, 0], H[1, 1], H[1, 2],
-            H[2, 0], H[2, 1],
-        ], dtype=np.float32)
+        """Convert 3x3 homography to 8D vector.
+
+        Delegates to the canonical numpy implementation in src.utils.geometry.
+        See also: src.utils.homography.homography_matrix_to_vec (torch version).
+        """
+        return homography_matrix_to_vec_np(H)
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         """

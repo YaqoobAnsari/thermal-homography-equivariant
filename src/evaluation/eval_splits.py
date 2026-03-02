@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.data import SyntheticThermalGenerator, ThermalPairDataset
+from src.utils.homography import homography_matrix_to_vec
 from src.training.metrics import (
     compute_all_metrics,
     corner_error,
@@ -157,20 +158,9 @@ def evaluate_rotation_equivariance(
                 output = model(src_tensor.to(device), tgt_tensor.to(device))
                 H_pred = output["homography"].cpu()
 
-            # Convert GT to vec
-            H_gt_normalized = H_gt_new / (H_gt_new[2, 2] + 1e-8)
-            H_gt_vec = torch.tensor(
-                [
-                    H_gt_normalized[0, 0],
-                    H_gt_normalized[0, 1],
-                    H_gt_normalized[0, 2],
-                    H_gt_normalized[1, 0],
-                    H_gt_normalized[1, 1],
-                    H_gt_normalized[1, 2],
-                    H_gt_normalized[2, 0],
-                    H_gt_normalized[2, 1],
-                ]
-            ).unsqueeze(0)
+            # Convert GT to vec using canonical implementation
+            H_gt_mat = torch.from_numpy(H_gt_new).float()
+            H_gt_vec = homography_matrix_to_vec(H_gt_mat).unsqueeze(0)
 
             # Compute errors
             errors_corner.append(corner_error(H_pred, H_gt_vec).item())
