@@ -876,6 +876,7 @@ class SyntheticThermalGenerator(Dataset):
         n_samples: int = 1000,
         image_size: Tuple[int, int] = (256, 256),
         pattern_type: str = "checkerboard",  # "checkerboard" or "blobs"
+        pattern_types: Optional[List[str]] = None,  # Multi-pattern mode: randomly sample from list
         rotation_range: Tuple[float, float] = (-180, 180),  # FIXED: Full rotation range for E(2) equivariance testing
         translation_range: Tuple[float, float] = (-30, 30),
         scale_range: Tuple[float, float] = (0.95, 1.05),
@@ -885,6 +886,7 @@ class SyntheticThermalGenerator(Dataset):
         self.n_samples = n_samples
         self.image_size = image_size
         self.pattern_type = pattern_type
+        self.pattern_types = pattern_types  # When set, overrides pattern_type
         self.rotation_range = rotation_range
         self.translation_range = translation_range
         self.scale_range = scale_range
@@ -894,10 +896,22 @@ class SyntheticThermalGenerator(Dataset):
         # Use modern RNG for reproducibility (avoids global state issues)
         self.rng = np.random.default_rng(seed)
 
+        if self.pattern_types is not None:
+            logger.info(f"SyntheticThermalGenerator: multi-pattern mode with {len(self.pattern_types)} patterns: {self.pattern_types}")
+
     def __len__(self) -> int:
         return self.n_samples
 
+    def _get_pattern_type_for_sample(self) -> str:
+        """Get pattern type for this sample. Randomly samples from pattern_types if set."""
+        if self.pattern_types is not None and len(self.pattern_types) > 0:
+            return self.pattern_types[np.random.randint(0, len(self.pattern_types))]
+        return self.pattern_type
+
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        # Select pattern type (multi-pattern mode randomly samples from list)
+        current_pattern = self._get_pattern_type_for_sample()
+
         # Generate source image based on pattern type
         # Pattern generators organized by symmetry tier:
         #   Tier 1: Fully asymmetric (best for rotation)
@@ -906,87 +920,87 @@ class SyntheticThermalGenerator(Dataset):
         #   Tier 4: Realistic thermal
 
         # Tier 1: Fully Asymmetric
-        if self.pattern_type == "asymmetric":
+        if current_pattern == "asymmetric":
             image_src = generate_asymmetric_pattern(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "arrow":
+        elif current_pattern == "arrow":
             image_src = generate_arrow_pattern(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "L_shape":
+        elif current_pattern == "L_shape":
             image_src = generate_L_shape(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "T_shape":
+        elif current_pattern == "T_shape":
             image_src = generate_T_shape(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "corner_marker":
+        elif current_pattern == "corner_marker":
             image_src = generate_corner_marker(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
         # Tier 2: Semi-Asymmetric
-        elif self.pattern_type == "natural":
+        elif current_pattern == "natural":
             image_src = generate_natural_texture(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "blobs":
+        elif current_pattern == "blobs":
             image_src = generate_thermal_blobs(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "stripes":
+        elif current_pattern == "stripes":
             image_src = generate_stripes(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "ellipse":
+        elif current_pattern == "ellipse":
             image_src = generate_ellipse(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "gradient":
+        elif current_pattern == "gradient":
             image_src = generate_gradient(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
         # Tier 3: High Symmetry (stress tests)
-        elif self.pattern_type == "checkerboard":
+        elif current_pattern == "checkerboard":
             image_src = generate_checkerboard(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "cross":
+        elif current_pattern == "cross":
             image_src = generate_cross(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "concentric":
+        elif current_pattern == "concentric":
             image_src = generate_concentric(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
         # Tier 4: Realistic Thermal
-        elif self.pattern_type == "thermal_hotspot":
+        elif current_pattern == "thermal_hotspot":
             image_src = generate_thermal_hotspot(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
-        elif self.pattern_type == "multi_hotspot":
+        elif current_pattern == "multi_hotspot":
             image_src = generate_multi_hotspot(
                 size=self.image_size,
                 noise_std=self.noise_std,
             )
         else:
             # Default to asymmetric (safest for rotation estimation)
-            logger.warning(f"Unknown pattern type '{self.pattern_type}', defaulting to 'asymmetric'")
+            logger.warning(f"Unknown pattern type '{current_pattern}', defaulting to 'asymmetric'")
             image_src = generate_asymmetric_pattern(
                 size=self.image_size,
                 noise_std=self.noise_std,

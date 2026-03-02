@@ -1,10 +1,10 @@
-# Sim(2)-Equivariant Thermal Homography
+# Sim(2)-Equivariant Thermal Similarity Estimation
 
 A keypoint-free approach to thermal image alignment achieving **true Sim(2) equivariance** through log-polar transform for joint scale-rotation detection.
 
 ## Overview
 
-This project implements a novel method for thermal homography estimation that:
+This project implements a novel method for thermal similarity estimation (4DOF: rotation, scale, tx, ty) that:
 
 - Works without keypoint detection (handles low-texture thermal images)
 - Achieves **TRUE Sim(2) = SO(2) x R+ x R2** equivariance (rotation + scale + translation)
@@ -43,9 +43,9 @@ Input: (img_src, img_tgt)
          |
     Spatial cross-correlation for translation
          |
-    H = T(t) @ S(s) @ R(theta)
+    S = T(t) @ Scale(s) @ R(theta)
          |
-Output: H (3x3 homography matrix)
+Output: S (3x3 similarity matrix)
 ```
 
 ### Results
@@ -91,9 +91,9 @@ model = LogPolarSim2Net(
 
 # Forward pass
 result = model(img_src, img_tgt)
-homography = result['homography']   # [B, 3, 3]
-rotation = result['rotation_deg']   # Detected rotation in degrees
-scale = result['scale']             # Detected scale factor
+similarity = result['similarity_matrix']  # [B, 3, 3] Sim(2) matrix
+rotation = result['rotation_deg']         # Detected rotation in degrees
+scale = result['scale']                   # Detected scale factor
 ```
 
 ### 3. Training
@@ -143,7 +143,7 @@ thermal-homography/
 │   │   └── mscoco_dataset.py
 │   ├── training/
 │   │   ├── train.py           # Training loop (PyTorch Lightning)
-│   │   ├── losses.py          # Homography loss functions
+│   │   ├── losses.py          # Similarity loss functions
 │   │   ├── sim2_losses.py     # Sim(2)-specific losses
 │   │   └── metrics.py         # Evaluation metrics
 │   ├── evaluation/
@@ -191,9 +191,10 @@ pytest tests/ --cov=src --cov-report=html
 
 ```bibtex
 @article{ansari2026thermal,
-  title={Keypoint-Free Thermal Homography via Learned Fourier-Mellin Transform
-         with Sim(2) Equivariance},
+  title={Keypoint-Free Thermal Similarity Estimation via Learned Fourier-Mellin
+         Transform with Sim(2) Equivariance},
   author={Ansari, Yaqoob},
+  journal={IEEE Transactions on Image Processing},
   year={2026}
 }
 ```

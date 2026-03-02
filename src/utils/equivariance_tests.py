@@ -12,6 +12,8 @@ For scalar-valued outputs (like our node features), this becomes:
 These tests are CRITICAL for debugging implementation bugs.
 """
 
+from __future__ import annotations
+
 import math
 
 import torch

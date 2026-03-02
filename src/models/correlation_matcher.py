@@ -15,8 +15,9 @@ The Solution:
 This is similar to optical flow, but designed for larger transformations.
 
 Author: Yaqoob Ansari
-Date: 2026-01-30
 """
+
+from __future__ import annotations
 
 import math
 import torch

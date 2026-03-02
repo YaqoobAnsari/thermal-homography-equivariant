@@ -28,6 +28,8 @@ References:
 - Arun et al. (1987): "Least-squares fitting of two 3D point sets"
 """
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

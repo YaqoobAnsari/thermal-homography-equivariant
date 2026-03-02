@@ -1,5 +1,5 @@
 """
-Model architectures for thermal homography estimation.
+Model architectures for thermal similarity estimation.
 
 Recommended architecture:
 - LogPolarSim2Net: True Sim(2) equivariance via log-polar + Fourier-Mellin transform

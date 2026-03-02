@@ -25,6 +25,8 @@ For Sim(2)-equivariant homography estimation, use InvariantLRFT which uses
 distance-based attention rather than learned feature queries.
 """
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

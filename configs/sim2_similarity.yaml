@@ -1,0 +1,73 @@
+# Sim(2) Similarity Estimation Training
+# Model: LogPolarSim2Net (Fourier-Mellin Transform)
+# Goal: Train learned log-polar features to improve over classical FMT
+
+seed: 42
+experiment_name: "sim2_similarity_training"
+
+model:
+  type: "log_polar_sim2"
+  lp_size: [180, 64]        # (n_angles, n_radii) - 2deg resolution
+  r_min: 0.05               # Avoid center singularity
+  r_max: 0.9                # Maximum radius
+  feature_channels: 64      # CNN feature dimension
+  translation_channels: 32  # Translation estimator channels
+  sr_temperature: 50.0      # Scale-rotation soft-argmax temperature
+  t_temperature: 20.0       # Translation soft-argmax temperature
+  use_learned_features: true
+  use_fft_magnitude: true   # FMT mode (translation-invariant)
+  use_disambiguation: true  # 180deg ambiguity resolution
+
+loss:
+  type: "sim2"
+  rotation_weight: 1.0
+  scale_weight: 1.0
+  translation_weight: 0.5
+  corner_weight: 0.1        # Validation only (low weight)
+  peak_sr_weight: 0.2       # Peak sharpness
+  peak_t_weight: 0.1
+  correlation_weight: 2.0   # KEY: Direct correlation supervision
+  correlation_sigma: 2.0
+  correlation_loss_type: "soft_argmax"
+
+data:
+  synthetic: true
+  pattern_types:             # Multiple patterns for diversity
+    - "asymmetric"
+    - "arrow"
+    - "L_shape"
+    - "thermal_hotspot"
+    - "multi_hotspot"
+    - "natural"
+    - "blobs"
+  n_train_samples: 5000
+  n_val_samples: 1000
+  image_size: [256, 256]
+  rotation_range: [-180, 180]   # Full circle
+  translation_range: [-40, 40]  # Pixels
+  scale_range: [0.7, 1.4]      # Wide range
+  noise_std: 10
+
+training:
+  batch_size: 16
+  learning_rate: 3.0e-4
+  weight_decay: 1.0e-4
+  warmup_epochs: 5
+  max_epochs: 200
+  num_workers: 4
+  precision: 32
+  gradient_clip: 1.0
+  accumulate_grad_batches: 1
+  val_check_interval: 1.0
+  early_stopping_patience: 30
+  optimizer_type: "adamw"
+  scheduler_type: "cosine"
+  run_test: true
+  auto_resume: false
+
+logging:
+  use_wandb: false
+  wandb_project: "thermal-similarity"
+  experiment_name: "sim2_similarity_training"
+  log_dir: "logs/sim2_similarity"
+  log_every_n_steps: 10

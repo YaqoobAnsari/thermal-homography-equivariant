@@ -1,10 +1,10 @@
-# Evaluation: Sim(2)-Equivariant Thermal Homography
+# Evaluation: Sim(2)-Equivariant Thermal Similarity Estimation
 
 ---
 
 ## Core Hypothesis
 
-**Claim:** A Sim(2)-equivariant architecture (via log-polar + Fourier-Mellin transform) generalizes to unseen rotations and scales without data augmentation, while baselines fail outside their training distribution.
+**Claim:** A Sim(2)-equivariant architecture for similarity estimation (via log-polar + Fourier-Mellin transform) generalizes to unseen rotations and scales without data augmentation, while baselines fail outside their training distribution.
 
 **Success Criteria:**
 - Error variance < 10% across rotation angles (flat error curve)
@@ -33,7 +33,7 @@ Source/Target Images (256x256)
        |
    Translation Estimator -> (tx, ty)
        |
-   Homography H = T @ R(theta) @ S(s)
+   Similarity S = T @ R(theta) @ Scale(s)
 ```
 
 **Key Parameters:**

@@ -23,6 +23,8 @@ References:
 - E(2)-Steerable CNNs (Weiler & Cesa, 2019): Theory of E(2) equivariance
 """
 
+from __future__ import annotations
+
 import math
 
 import torch

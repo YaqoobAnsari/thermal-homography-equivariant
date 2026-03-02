@@ -1,5 +1,5 @@
 """
-Training Script for Thermal Homography
+Training Script for Thermal Similarity Estimation
 
 Implements PyTorch Lightning training with:
 - Multi-GPU support
@@ -7,6 +7,8 @@ Implements PyTorch Lightning training with:
 - Checkpoint management
 - Learning rate scheduling
 """
+
+from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
@@ -34,12 +36,14 @@ from src.models import (
     CorrelationBaseline,
     HomographyNet,
     IterativeHomographyNetwork,
+    LogPolarSim2Net,
     LucasKanadeBaseline,
     ResNetBaseline,
     ThermalHomographyNet,
     UNetBaseline,
 )
 from src.training.losses import HomographyLoss
+from src.training.sim2_losses import Sim2HomographyLoss
 from src.training.metrics import (
     MetricTracker,
     corner_error,
@@ -61,6 +65,7 @@ MODEL_REGISTRY = {
     "lucas_kanade": LucasKanadeBaseline,
     "baseshomo": BasesHomoBaseline,
     "ihn": IterativeHomographyNetwork,
+    "log_polar_sim2": LogPolarSim2Net,
 }
 
 
@@ -305,7 +310,7 @@ class ConfigSavingCheckpoint(ModelCheckpoint):
 
 class ThermalHomographyModule(pl.LightningModule):
     """
-    PyTorch Lightning module for thermal homography training.
+    PyTorch Lightning module for thermal similarity estimation training.
     """
 
     def __init__(
@@ -517,6 +522,245 @@ class ThermalHomographyModule(pl.LightningModule):
         }
 
 
+class Sim2SimilarityModule(pl.LightningModule):
+    """
+    PyTorch Lightning module for Sim(2) similarity training with LogPolarSim2Net.
+
+    This module trains the LogPolarSim2Net model with Sim2HomographyLoss,
+    supervising rotation, scale, and translation components directly
+    rather than treating them as a generic homography problem.
+    """
+
+    def __init__(
+        self,
+        # Model config
+        lp_size: tuple = (180, 64),
+        r_min: float = 0.05,
+        r_max: float = 0.9,
+        feature_channels: int = 64,
+        translation_channels: int = 32,
+        sr_temperature: float = 50.0,
+        t_temperature: float = 20.0,
+        use_learned_features: bool = True,
+        use_fft_magnitude: bool = True,
+        use_disambiguation: bool = True,
+        # Loss config
+        rotation_weight: float = 1.0,
+        scale_weight: float = 1.0,
+        translation_weight: float = 0.5,
+        corner_weight: float = 0.1,
+        peak_sr_weight: float = 0.2,
+        peak_t_weight: float = 0.1,
+        correlation_weight: float = 2.0,
+        correlation_sigma: float = 2.0,
+        correlation_loss_type: str = "soft_argmax",
+        # Training config
+        learning_rate: float = 3e-4,
+        weight_decay: float = 1e-4,
+        warmup_epochs: int = 5,
+        optimizer_type: str = "adamw",
+        scheduler_type: str = "cosine",
+        # Image config
+        image_size: tuple = (256, 256),
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+
+        # Build LogPolarSim2Net model
+        self.model = LogPolarSim2Net(
+            lp_size=lp_size,
+            r_min=r_min,
+            r_max=r_max,
+            feature_channels=feature_channels,
+            translation_channels=translation_channels,
+            sr_temperature=sr_temperature,
+            t_temperature=t_temperature,
+            use_learned_features=use_learned_features,
+            use_fft_magnitude=use_fft_magnitude,
+            use_disambiguation=use_disambiguation,
+        )
+
+        # Sim(2) loss function
+        self.loss_fn = Sim2HomographyLoss(
+            w_rotation=rotation_weight,
+            w_scale=scale_weight,
+            w_translation=translation_weight,
+            w_corner=corner_weight,
+            w_peak_sr=peak_sr_weight,
+            w_peak_t=peak_t_weight,
+            w_correlation=correlation_weight,
+            image_size=image_size,
+            lp_size=lp_size,
+            r_min=r_min,
+            r_max=r_max,
+            correlation_sigma=correlation_sigma,
+            correlation_loss_type=correlation_loss_type,
+        )
+
+    def forward(self, image_src: Tensor, image_tgt: Tensor) -> dict[str, Tensor]:
+        return self.model(image_src, image_tgt)
+
+    def training_step(self, batch: dict[str, Tensor], batch_idx: int) -> Tensor | None:
+        image_src = batch["image_src"]
+        image_tgt = batch["image_tgt"]
+
+        # Forward pass
+        output = self(image_src, image_tgt)
+
+        # Build target dict from synthetic data ground truth
+        target = {
+            "rotation": batch["rotation"],
+            "scale": batch["scale"],
+            "translation": batch["translation"],
+            "homography": batch["homography"],
+        }
+
+        # Compute Sim(2) losses
+        losses = self.loss_fn(output, target)
+
+        # NaN detection
+        if torch.isnan(losses["total"]) or torch.isinf(losses["total"]):
+            logger.error(
+                f"NaN/Inf detected in loss at batch {batch_idx}! "
+                f"Losses: {', '.join(f'{k}={v.item() if torch.is_tensor(v) else v}' for k, v in losses.items())}"
+            )
+            self.trainer.should_stop = True
+            return None
+
+        # Log all loss components
+        for name, value in losses.items():
+            self.log(
+                f"train/loss_{name}", value,
+                on_step=True, on_epoch=True,
+                prog_bar=(name == "total"),
+            )
+
+        # Log per-component metrics periodically
+        if batch_idx % DEFAULT_METRIC_LOG_FREQUENCY == 0:
+            with torch.no_grad():
+                # Rotation error in degrees
+                rot_err = torch.abs(
+                    torch.atan2(
+                        torch.sin(output["rotation"] - batch["rotation"]),
+                        torch.cos(output["rotation"] - batch["rotation"]),
+                    )
+                ) * 180.0 / 3.14159265
+                self.log("train/rotation_error_deg", rot_err.mean(), on_step=True, on_epoch=False)
+
+                # Scale error (ratio)
+                scale_ratio = output["scale"] / batch["scale"].clamp(min=0.1)
+                scale_err = torch.abs(torch.log(scale_ratio.clamp(min=0.1, max=10.0)))
+                self.log("train/scale_error_log", scale_err.mean(), on_step=True, on_epoch=False)
+
+                # Translation error (L2 in normalized coords)
+                trans_err = torch.norm(output["translation"] - batch["translation"], dim=-1)
+                self.log("train/translation_error", trans_err.mean(), on_step=True, on_epoch=False)
+
+        return losses["total"]
+
+    def on_before_optimizer_step(self, optimizer):
+        """Log gradient norms for monitoring training stability."""
+        total_norm = 0.0
+        for p in self.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm**0.5
+
+        self.log("train/grad_norm", total_norm, on_step=True, on_epoch=False)
+
+        if total_norm > 100.0:
+            logger.warning(f"Large gradient norm detected: {total_norm:.2f}")
+
+    def validation_step(self, batch: dict[str, Tensor], batch_idx: int) -> dict[str, Tensor]:
+        image_src = batch["image_src"]
+        image_tgt = batch["image_tgt"]
+
+        # Forward pass
+        output = self(image_src, image_tgt)
+
+        # Build target dict
+        target = {
+            "rotation": batch["rotation"],
+            "scale": batch["scale"],
+            "translation": batch["translation"],
+            "homography": batch["homography"],
+        }
+
+        # Compute losses
+        losses = self.loss_fn(output, target)
+
+        # Log losses
+        for name, value in losses.items():
+            self.log(f"val/loss_{name}", value, on_epoch=True, prog_bar=(name == "total"))
+
+        # === Per-component validation metrics ===
+
+        # Rotation error (degrees)
+        rot_err = torch.abs(
+            torch.atan2(
+                torch.sin(output["rotation"] - batch["rotation"]),
+                torch.cos(output["rotation"] - batch["rotation"]),
+            )
+        ) * 180.0 / 3.14159265
+        self.log("val/rotation_error_deg", rot_err.mean(), on_epoch=True)
+
+        # Scale error (log-space)
+        scale_ratio = output["scale"] / batch["scale"].clamp(min=0.1)
+        scale_err = torch.abs(torch.log(scale_ratio.clamp(min=0.1, max=10.0)))
+        self.log("val/scale_error_log", scale_err.mean(), on_epoch=True)
+
+        # Translation error (L2 in normalized coords)
+        trans_err = torch.norm(output["translation"] - batch["translation"], dim=-1)
+        self.log("val/translation_error", trans_err.mean(), on_epoch=True)
+
+        # Corner error (pixels) -- geometric validation
+        corner_err = losses.get("corner_raw", losses.get("corner", torch.tensor(0.0)))
+        self.log("val/corner_error_mean", corner_err, on_epoch=True)
+
+        return {"loss": losses["total"]}
+
+    def test_step(self, batch: dict[str, Tensor], batch_idx: int) -> dict[str, Tensor]:
+        return self.validation_step(batch, batch_idx)
+
+    def configure_optimizers(self):
+        optimizer_type = getattr(self.hparams, "optimizer_type", "adamw")
+        optimizer = create_optimizer(
+            self,
+            optimizer_type=optimizer_type,
+            lr=self.hparams.learning_rate,
+            weight_decay=self.hparams.weight_decay,
+        )
+
+        scheduler_type = getattr(self.hparams, "scheduler_type", "cosine")
+        max_epochs = self.trainer.max_epochs if self.trainer else 200
+
+        scheduler = create_scheduler(
+            optimizer,
+            scheduler_type=scheduler_type,
+            T_max=max_epochs,
+            warmup_epochs=self.hparams.warmup_epochs,
+        )
+
+        if scheduler_type == "plateau":
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "monitor": "val/loss_total",
+                    "interval": "epoch",
+                },
+            }
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "epoch",
+            },
+        }
+
+
 def train(config: DictConfig, resume_from: str | None = None):
     """
     Main training function.
@@ -535,37 +779,102 @@ def train(config: DictConfig, resume_from: str | None = None):
         if ckpt_path:
             logger.info(f"Auto-resuming from: {ckpt_path}")
 
-    # Create model
-    model = ThermalHomographyModule(
-        model_type=config.model.type,
-        feature_dim=config.model.get("feature_dim", 32),
-        grid_size=config.model.get("grid_size", 32),
-        gnn_num_layers=config.model.get("gnn_num_layers", 4),
-        use_lrft=config.model.get("use_lrft", True),
-        corner_weight=config.loss.corner_weight,
-        rotation_weight=config.loss.rotation_weight,
-        translation_weight=config.loss.translation_weight,
-        rank_weight=config.loss.rank_weight,
-        learning_rate=config.training.learning_rate,
-        weight_decay=config.training.weight_decay,
-        warmup_epochs=config.training.warmup_epochs,
-        optimizer_type=config.training.get("optimizer_type", "adamw"),
-        scheduler_type=config.training.get("scheduler_type", "cosine"),
-        image_size=tuple(config.data.image_size),
-    )
+    # Create model based on type
+    model_type = config.model.type
+
+    if model_type == "log_polar_sim2":
+        # Use Sim2SimilarityModule for LogPolarSim2Net
+        model = Sim2SimilarityModule(
+            lp_size=tuple(config.model.lp_size),
+            r_min=config.model.get("r_min", 0.05),
+            r_max=config.model.get("r_max", 0.9),
+            feature_channels=config.model.get("feature_channels", 64),
+            translation_channels=config.model.get("translation_channels", 32),
+            sr_temperature=config.model.get("sr_temperature", 50.0),
+            t_temperature=config.model.get("t_temperature", 20.0),
+            use_learned_features=config.model.get("use_learned_features", True),
+            use_fft_magnitude=config.model.get("use_fft_magnitude", True),
+            use_disambiguation=config.model.get("use_disambiguation", True),
+            rotation_weight=config.loss.get("rotation_weight", 1.0),
+            scale_weight=config.loss.get("scale_weight", 1.0),
+            translation_weight=config.loss.get("translation_weight", 0.5),
+            corner_weight=config.loss.get("corner_weight", 0.1),
+            peak_sr_weight=config.loss.get("peak_sr_weight", 0.2),
+            peak_t_weight=config.loss.get("peak_t_weight", 0.1),
+            correlation_weight=config.loss.get("correlation_weight", 2.0),
+            correlation_sigma=config.loss.get("correlation_sigma", 2.0),
+            correlation_loss_type=config.loss.get("correlation_loss_type", "soft_argmax"),
+            learning_rate=config.training.learning_rate,
+            weight_decay=config.training.weight_decay,
+            warmup_epochs=config.training.warmup_epochs,
+            optimizer_type=config.training.get("optimizer_type", "adamw"),
+            scheduler_type=config.training.get("scheduler_type", "cosine"),
+            image_size=tuple(config.data.image_size),
+        )
+    else:
+        # Use ThermalHomographyModule for all other model types
+        model = ThermalHomographyModule(
+            model_type=model_type,
+            feature_dim=config.model.get("feature_dim", 32),
+            grid_size=config.model.get("grid_size", 32),
+            gnn_num_layers=config.model.get("gnn_num_layers", 4),
+            use_lrft=config.model.get("use_lrft", True),
+            corner_weight=config.loss.corner_weight,
+            rotation_weight=config.loss.rotation_weight,
+            translation_weight=config.loss.translation_weight,
+            rank_weight=config.loss.rank_weight,
+            learning_rate=config.training.learning_rate,
+            weight_decay=config.training.weight_decay,
+            warmup_epochs=config.training.warmup_epochs,
+            optimizer_type=config.training.get("optimizer_type", "adamw"),
+            scheduler_type=config.training.get("scheduler_type", "cosine"),
+            image_size=tuple(config.data.image_size),
+        )
 
     # Create data loaders
+    # Determine pattern configuration: support both pattern_type (single) and pattern_types (list)
+    pattern_types = config.data.get("pattern_types", None)
+    pattern_type = config.data.get("pattern_type", "checkerboard")
+
+    # Common data kwargs
+    data_kwargs = dict(
+        image_size=tuple(config.data.image_size),
+        rotation_range=tuple(config.data.get("rotation_range", (-180, 180))),
+        translation_range=tuple(config.data.get("translation_range", (-30, 30))),
+        scale_range=tuple(config.data.get("scale_range", (0.95, 1.05))),
+        noise_std=config.data.get("noise_std", 10),
+    )
+
     if config.data.synthetic:
-        train_dataset = SyntheticThermalGenerator(
-            n_samples=config.data.n_train_samples,
-            image_size=tuple(config.data.image_size),
-            seed=config.seed,
-        )
-        val_dataset = SyntheticThermalGenerator(
-            n_samples=config.data.n_val_samples,
-            image_size=tuple(config.data.image_size),
-            seed=config.seed + 1,
-        )
+        if pattern_types is not None:
+            # Multi-pattern mode: pass list of patterns
+            pattern_types_list = list(pattern_types) if not isinstance(pattern_types, list) else pattern_types
+            train_dataset = SyntheticThermalGenerator(
+                n_samples=config.data.n_train_samples,
+                pattern_types=pattern_types_list,
+                seed=config.seed,
+                **data_kwargs,
+            )
+            val_dataset = SyntheticThermalGenerator(
+                n_samples=config.data.n_val_samples,
+                pattern_types=pattern_types_list,
+                seed=config.seed + 1,
+                **data_kwargs,
+            )
+        else:
+            # Single-pattern mode (backward compatible)
+            train_dataset = SyntheticThermalGenerator(
+                n_samples=config.data.n_train_samples,
+                pattern_type=pattern_type,
+                seed=config.seed,
+                **data_kwargs,
+            )
+            val_dataset = SyntheticThermalGenerator(
+                n_samples=config.data.n_val_samples,
+                pattern_type=pattern_type,
+                seed=config.seed + 1,
+                **data_kwargs,
+            )
     else:
         train_dataset = ThermalPairDataset(
             data_root=config.data.data_root,
@@ -663,54 +972,101 @@ def train(config: DictConfig, resume_from: str | None = None):
 
 def main():
     """Entry point for command-line training."""
-    # Default config for quick testing
-    default_config = {
-        "seed": 42,
-        "model": {
-            "type": "e2_gnn",
-            "feature_dim": 32,
-            "grid_size": 16,
-            "gnn_num_layers": 2,
-            "use_lrft": True,
-        },
-        "loss": {
-            "corner_weight": 1.0,
-            "rotation_weight": 0.1,
-            "translation_weight": 0.1,
-            "rank_weight": 0.01,
-        },
-        "data": {
-            "synthetic": True,
-            "n_train_samples": 1000,
-            "n_val_samples": 200,
-            "image_size": [256, 256],
-            "data_root": "",
-        },
-        "training": {
-            "batch_size": 8,
-            "learning_rate": 1e-4,
-            "weight_decay": 1e-4,
-            "warmup_epochs": 5,
-            "max_epochs": 100,
-            "num_workers": 0,
-            "precision": 32,
-            "gradient_clip": 1.0,
-            "accumulate_grad_batches": 1,
-            "val_check_interval": 1.0,
-            "early_stopping_patience": 20,
-            "run_test": True,
-        },
-        "logging": {
-            "use_wandb": False,
-            "wandb_project": "thermal-homography",
-            "experiment_name": "test_run",
-            "log_dir": "logs",
-            "log_every_n_steps": 10,
-        },
-    }
+    import argparse
+    import sys
 
-    config = OmegaConf.create(default_config)
-    train(config)
+    parser = argparse.ArgumentParser(description="Train thermal homography / similarity model")
+    parser.add_argument(
+        "--config-name", "--config_name",
+        type=str,
+        default=None,
+        help="Name of config file in configs/ directory (without .yaml extension)",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Full path to config YAML file",
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume from",
+    )
+
+    args = parser.parse_args()
+
+    if args.config_name is not None:
+        # Load from configs/ directory
+        config_path = Path("configs") / f"{args.config_name}.yaml"
+        if not config_path.exists():
+            # Try absolute path from project root
+            project_root = Path(__file__).parent.parent.parent
+            config_path = project_root / "configs" / f"{args.config_name}.yaml"
+        if not config_path.exists():
+            logger.error(f"Config file not found: {config_path}")
+            sys.exit(1)
+        logger.info(f"Loading config from: {config_path}")
+        config = OmegaConf.load(config_path)
+    elif args.config is not None:
+        # Load from full path
+        config_path = Path(args.config)
+        if not config_path.exists():
+            logger.error(f"Config file not found: {config_path}")
+            sys.exit(1)
+        logger.info(f"Loading config from: {config_path}")
+        config = OmegaConf.load(config_path)
+    else:
+        # Default config for quick testing
+        logger.info("No config specified, using default config")
+        default_config = {
+            "seed": 42,
+            "model": {
+                "type": "e2_gnn",
+                "feature_dim": 32,
+                "grid_size": 16,
+                "gnn_num_layers": 2,
+                "use_lrft": True,
+            },
+            "loss": {
+                "corner_weight": 1.0,
+                "rotation_weight": 0.1,
+                "translation_weight": 0.1,
+                "rank_weight": 0.01,
+            },
+            "data": {
+                "synthetic": True,
+                "n_train_samples": 1000,
+                "n_val_samples": 200,
+                "image_size": [256, 256],
+                "data_root": "",
+            },
+            "training": {
+                "batch_size": 8,
+                "learning_rate": 1e-4,
+                "weight_decay": 1e-4,
+                "warmup_epochs": 5,
+                "max_epochs": 100,
+                "num_workers": 0,
+                "precision": 32,
+                "gradient_clip": 1.0,
+                "accumulate_grad_batches": 1,
+                "val_check_interval": 1.0,
+                "early_stopping_patience": 20,
+                "run_test": True,
+            },
+            "logging": {
+                "use_wandb": False,
+                "wandb_project": "thermal-homography",
+                "experiment_name": "test_run",
+                "log_dir": "logs",
+                "log_every_n_steps": 10,
+            },
+        }
+        config = OmegaConf.create(default_config)
+
+    train(config, resume_from=args.resume)
 
 
 if __name__ == "__main__":

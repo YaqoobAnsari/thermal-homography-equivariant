@@ -1,5 +1,5 @@
 """
-Evaluation Metrics for Homography Estimation
+Evaluation Metrics for Similarity Estimation
 
 Implements standard metrics:
 1. Corner reprojection error (primary metric)
@@ -7,6 +7,8 @@ Implements standard metrics:
 3. Translation error (pixels)
 4. Registration recall @ threshold
 """
+
+from __future__ import annotations
 
 import math
 
@@ -739,7 +741,7 @@ class MetricTracker:
 
         return precision_recall_curve(H_pred, H_gt, thresholds, self.image_size)
 
-    def compute_per_difficulty(
+    def compute_per_difficulty(  # noqa: C901
         self,
         difficulty_scores: Tensor,
         difficulty_bins: list[float] = None,
@@ -849,3 +851,227 @@ def evaluate_rotation_equivariance(
             results["translation_error"].append(float("nan"))
 
     return results
+
+
+# =============================================================================
+# Sim(2)-Specific Metrics
+# =============================================================================
+
+
+def scale_error(s_pred: Tensor, s_gt: Tensor) -> Tensor:
+    """
+    Compute scale error in log-space: |log(s_pred / s_gt)|.
+
+    Log-space is the natural metric for scale because:
+    - Symmetric: error(s, 1/s) is the same magnitude
+    - Predicting 2x when GT is 1x has same error as predicting 0.5x
+
+    Args:
+        s_pred: [B] predicted scale factors (> 0)
+        s_gt: [B] ground truth scale factors (> 0)
+
+    Returns:
+        [B] scale error in log-space (always non-negative)
+    """
+    # Clamp to avoid log(0) or log(negative)
+    s_pred = s_pred.clamp(min=1e-6)
+    s_gt = s_gt.clamp(min=1e-6)
+    return (torch.log(s_pred) - torch.log(s_gt)).abs()
+
+
+def sim2_component_errors(
+    pred_dict: dict[str, Tensor],
+    target_dict: dict[str, Tensor],
+    image_size: tuple[int, int] = (256, 256),
+) -> dict[str, Tensor]:
+    """
+    Compute all Sim(2) component errors from model output dicts.
+
+    This function works directly with the output format of LogPolarSim2Net
+    and the target format of SyntheticThermalGenerator.
+
+    Args:
+        pred_dict: Model output dict with keys:
+            - 'rotation' or 'rotation_deg': predicted rotation
+            - 'scale': predicted scale factor
+            - 'translation' or ('translation_x', 'translation_y'): predicted translation
+        target_dict: Ground truth dict with keys:
+            - 'rotation': GT rotation in radians
+            - 'scale': GT scale factor
+            - 'translation': GT translation [B, 2] in normalized [-1, 1] coords
+
+    Returns:
+        Dictionary with:
+            - 'rotation_mae_deg': [B] rotation MAE in degrees
+            - 'scale_mae_log': [B] scale MAE in log-space
+            - 'translation_mae_px': [B] translation MAE in pixels
+            - 'rotation_error_rad': [B] signed rotation error in radians
+    """
+    H_img, W_img = image_size
+
+    # --- Rotation error ---
+    if "rotation" in pred_dict:
+        rot_pred = pred_dict["rotation"]  # radians
+    elif "rotation_deg" in pred_dict:
+        rot_pred = pred_dict["rotation_deg"] * math.pi / 180.0
+    else:
+        raise KeyError("pred_dict must contain 'rotation' or 'rotation_deg'")
+
+    rot_gt = target_dict["rotation"]  # radians
+
+    # Angular difference with wraparound
+    rot_diff = rot_pred - rot_gt
+    rot_diff = torch.atan2(torch.sin(rot_diff), torch.cos(rot_diff))
+    rotation_mae_deg = rot_diff.abs() * 180.0 / math.pi
+
+    # --- Scale error ---
+    s_pred = pred_dict["scale"]
+    s_gt = target_dict["scale"]
+    scale_mae_log = scale_error(s_pred, s_gt)
+
+    # --- Translation error ---
+    if "translation" in pred_dict:
+        t_pred = pred_dict["translation"]  # [B, 2] normalized
+    else:
+        t_pred = torch.stack([
+            pred_dict["translation_x"],
+            pred_dict["translation_y"],
+        ], dim=-1)
+
+    t_gt = target_dict["translation"]  # [B, 2] normalized
+
+    # Convert from normalized [-1, 1] to pixels
+    t_pred_px = t_pred.clone()
+    t_pred_px[:, 0] = t_pred[:, 0] * (W_img / 2)
+    t_pred_px[:, 1] = t_pred[:, 1] * (H_img / 2)
+
+    t_gt_px = t_gt.clone()
+    t_gt_px[:, 0] = t_gt[:, 0] * (W_img / 2)
+    t_gt_px[:, 1] = t_gt[:, 1] * (H_img / 2)
+
+    translation_mae_px = torch.norm(t_pred_px - t_gt_px, dim=-1)
+
+    return {
+        "rotation_mae_deg": rotation_mae_deg,
+        "scale_mae_log": scale_mae_log,
+        "translation_mae_px": translation_mae_px,
+        "rotation_error_rad": rot_diff,
+    }
+
+
+def equivariance_score(errors_by_param: dict[float, float]) -> dict[str, float]:
+    """
+    Compute equivariance score from errors indexed by transformation parameter.
+
+    An equivariant model produces FLAT error curves -- the error should be
+    constant regardless of the transformation parameter value. This is
+    quantified by:
+        score = 1 - (std / mean)
+
+    Score > 0.9 indicates true equivariance (flat curve).
+    Score < 0.5 indicates significant parameter-dependent degradation.
+
+    The coefficient of variation (CV = std/mean) is also called the
+    "flatness ratio" -- lower CV means flatter error curve.
+
+    Args:
+        errors_by_param: Dictionary mapping parameter value (e.g., angle)
+            to mean error at that parameter value.
+            Example: {0: 2.1, 30: 2.3, 60: 2.0, 90: 2.2, ...}
+
+    Returns:
+        Dictionary with:
+            - 'score': equivariance score in [0, 1] (1 = perfectly flat)
+            - 'mean': mean error across all parameter values
+            - 'std': std of errors across parameter values
+            - 'cv': coefficient of variation (std/mean)
+            - 'max_error': worst-case error
+            - 'min_error': best-case error
+            - 'max_min_ratio': ratio of worst to best (1.0 = perfectly flat)
+            - 'is_equivariant': True if CV < 0.10 (flat error criterion)
+    """
+    values = list(errors_by_param.values())
+    if not values:
+        return {
+            "score": 0.0,
+            "mean": float("nan"),
+            "std": float("nan"),
+            "cv": float("nan"),
+            "max_error": float("nan"),
+            "min_error": float("nan"),
+            "max_min_ratio": float("nan"),
+            "is_equivariant": False,
+        }
+
+    arr = np.array(values)
+    mean_val = float(np.mean(arr))
+    std_val = float(np.std(arr))
+    cv = std_val / (mean_val + 1e-10)
+
+    return {
+        "score": max(0.0, 1.0 - cv),
+        "mean": mean_val,
+        "std": std_val,
+        "cv": cv,
+        "max_error": float(np.max(arr)),
+        "min_error": float(np.min(arr)),
+        "max_min_ratio": float(np.max(arr) / (np.min(arr) + 1e-10)),
+        "is_equivariant": cv < 0.10,
+    }
+
+
+def compute_sim2_metrics(
+    pred_dict: dict[str, Tensor],
+    target_dict: dict[str, Tensor],
+    image_size: tuple[int, int] = (256, 256),
+) -> dict[str, float]:
+    """
+    Comprehensive Sim(2) metrics including per-component and aggregate.
+
+    Combines component-wise errors with overall accuracy metrics.
+    Designed for use in evaluation scripts and logging.
+
+    Args:
+        pred_dict: Model output dict (from LogPolarSim2Net.forward())
+        target_dict: Ground truth dict (from SyntheticThermalGenerator)
+        image_size: Image dimensions for pixel-space metrics
+
+    Returns:
+        Dictionary of scalar metrics:
+            - rotation_mae_deg_mean/median: rotation error in degrees
+            - scale_mae_log_mean/median: scale error in log-space
+            - scale_mae_percent_mean: scale error as percentage
+            - translation_mae_px_mean/median: translation error in pixels
+            - corner_error_mean/median: MACE in pixels (if homography available)
+    """
+    errors = sim2_component_errors(pred_dict, target_dict, image_size)
+
+    metrics = {
+        # Rotation
+        "rotation_mae_deg_mean": errors["rotation_mae_deg"].mean().item(),
+        "rotation_mae_deg_median": errors["rotation_mae_deg"].median().item(),
+        "rotation_mae_deg_std": errors["rotation_mae_deg"].std().item(),
+        # Scale (log-space)
+        "scale_mae_log_mean": errors["scale_mae_log"].mean().item(),
+        "scale_mae_log_median": errors["scale_mae_log"].median().item(),
+        # Scale (percentage) -- more interpretable
+        "scale_mae_percent_mean": (
+            (torch.exp(errors["scale_mae_log"]) - 1.0).abs() * 100
+        ).mean().item(),
+        # Translation (pixels)
+        "translation_mae_px_mean": errors["translation_mae_px"].mean().item(),
+        "translation_mae_px_median": errors["translation_mae_px"].median().item(),
+        "translation_mae_px_std": errors["translation_mae_px"].std().item(),
+    }
+
+    # Corner error if homography is available
+    if "homography" in pred_dict and "homography" in target_dict:
+        ce = corner_error(
+            pred_dict["homography"],
+            target_dict["homography"],
+            image_size,
+        )
+        metrics["corner_error_mean"] = ce.mean().item()
+        metrics["corner_error_median"] = ce.median().item()
+
+    return metrics

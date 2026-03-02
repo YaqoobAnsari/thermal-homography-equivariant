@@ -1,8 +1,8 @@
 """
-Sim(2) Homography Loss Function for LogPolarSim2Net.
+Sim(2) Similarity Loss Function for LogPolarSim2Net.
 
 This module provides a comprehensive loss function that properly supervises
-all components of the Sim(2) homography estimation:
+all components of the Sim(2) similarity estimation (4DOF: rotation, scale, tx, ty):
 - Rotation (geodesic distance on SO(2))
 - Scale (log-space L1)
 - Translation (L2)
@@ -263,7 +263,7 @@ def corner_loss(
 
 class Sim2HomographyLoss(nn.Module):
     """
-    Comprehensive loss for LogPolarSim2Net training.
+    Comprehensive loss for Sim(2) similarity estimation training.
 
     Supervises all Sim(2) components with proper normalization:
     1. Rotation: Geodesic distance on SO(2), normalized by pi

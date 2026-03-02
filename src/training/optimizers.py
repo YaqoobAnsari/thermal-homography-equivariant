@@ -9,6 +9,8 @@ Usage:
     scheduler = create_scheduler(optimizer, scheduler_type='cosine', T_max=100)
 """
 
+from __future__ import annotations
+
 import math
 from collections.abc import Iterator
 from typing import Any

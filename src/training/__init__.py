@@ -1,9 +1,9 @@
 """
-Training components for thermal homography.
+Training components for thermal similarity estimation.
 
 Modules:
 - train: Main training loop and Lightning module
-- losses: Homography loss functions
+- losses: Similarity/homography loss functions
 - metrics: Evaluation metrics
 """
 
@@ -18,6 +18,11 @@ from .metrics import (
     registration_recall,
     rotation_error,
     translation_error,
+    # Sim(2)-specific metrics
+    scale_error,
+    sim2_component_errors,
+    equivariance_score,
+    compute_sim2_metrics,
 )
 
 __all__ = [
@@ -29,4 +34,9 @@ __all__ = [
     "rotation_error",
     "translation_error",
     "registration_recall",
+    # Sim(2)-specific metrics
+    "scale_error",
+    "sim2_component_errors",
+    "equivariance_score",
+    "compute_sim2_metrics",
 ]

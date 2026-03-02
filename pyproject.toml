@@ -5,18 +5,19 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "thermal-homography"
 version = "0.1.0"
-description = "E(2)-Equivariant Graph Neural Networks for Thermal Homography Estimation"
+description = "Sim(2)-Equivariant Similarity Estimation for Thermal Images"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "ECCV 2026 Research Team"}
+    {name = "Yaqoob Ansari"}
 ]
 keywords = [
     "thermal imaging",
-    "homography",
+    "similarity estimation",
     "equivariant networks",
-    "graph neural networks",
+    "Sim(2)",
+    "Fourier-Mellin transform",
     "computer vision",
     "deep learning"
 ]
@@ -60,12 +61,11 @@ dev = [
 [project.scripts]
 thermal-train = "src.training.train:main"
 thermal-eval = "src.evaluation.eval_splits:main"
-thermal-verify = "scripts.verify_setup:main"
 
 [project.urls]
-Homepage = "https://github.com/your-org/thermal-homography"
-Documentation = "https://github.com/your-org/thermal-homography#readme"
-Repository = "https://github.com/your-org/thermal-homography"
+Homepage = "https://github.com/YaqoobAnsari/thermal-homography-equivariant"
+Documentation = "https://github.com/YaqoobAnsari/thermal-homography-equivariant#readme"
+Repository = "https://github.com/YaqoobAnsari/thermal-homography-equivariant"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -22,6 +22,8 @@ Usage:
     logger.error("Failed to load checkpoint", exc_info=True)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import logging.handlers

@@ -1,5 +1,5 @@
 """
-Loss Functions for Homography Estimation
+Loss Functions for Similarity/Homography Estimation
 
 Implements multiple loss formulations:
 1. Corner reprojection loss (primary)
@@ -7,6 +7,8 @@ Implements multiple loss formulations:
 3. Translation loss (Euclidean)
 4. Rank regularization loss (for similarity matrix)
 """
+
+from __future__ import annotations
 
 import math
 

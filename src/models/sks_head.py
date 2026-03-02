@@ -25,6 +25,8 @@ References:
 - Supervised Learning of Semantics-Preserving Hash Functions (Li et al.)
 """
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

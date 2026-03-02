@@ -1,5 +1,5 @@
 """
-Log-Polar Sim(2) Equivariant Network.
+Log-Polar Sim(2) Equivariant Network for Similarity Estimation.
 
 This model achieves true Sim(2) equivariance using the log-polar transform:
 - Scale → translation in log(r) direction
@@ -12,7 +12,7 @@ Pipeline:
 1. Log-polar phase correlation for scale and rotation
 2. De-rotate and de-scale the target image
 3. Spatial matching for translation
-4. Build homography H = T(t) @ S(s) @ R(θ)
+4. Build similarity S = T(t) @ Scale(s) @ R(θ)
 
 Key Property:
     The log-polar transform makes a standard CNN scale-rotation equivariant
@@ -495,7 +495,7 @@ class LogPolarSim2Net(nn.Module):
             temperature=t_temperature,
         )
 
-        # Log resolution for homography computation
+        # Log resolution for similarity matrix computation
         self.log_scale_res = (math.log(r_max) - math.log(r_min)) / lp_size[1]
         self.angle_res = 2 * math.pi / lp_size[0]
 
@@ -640,7 +640,7 @@ class LogPolarSim2Net(nn.Module):
             3. Disambiguate 180° using spatial correlation [if use_disambiguation]
             4. Apply inverse to target → aligned target
             5. Spatial correlation → translation
-            6. Build homography H = T @ S @ R
+            6. Build similarity S = T @ Scale @ R
 
         Args:
             img_src: [B, C, H, W] source image
@@ -649,7 +649,8 @@ class LogPolarSim2Net(nn.Module):
 
         Returns:
             dict with:
-                homography: [B, 3, 3] estimated homography
+                homography: [B, 3, 3] estimated similarity matrix (kept for backward compat)
+                similarity_matrix: [B, 3, 3] estimated Sim(2) matrix (alias for homography)
                 rotation: [B] disambiguated rotation in radians
                 rotation_raw: [B] raw rotation before disambiguation
                 rotation_deg: [B] disambiguated rotation in degrees
@@ -690,7 +691,7 @@ class LogPolarSim2Net(nn.Module):
         tx = t_result["translation_x"]
         ty = t_result["translation_y"]
 
-        # Step 5: Build homography H = T(center) @ S(s) @ R(θ) @ T(-center) @ T(t)
+        # Step 5: Build similarity matrix S = T(center) @ Scale(s) @ R(θ) @ T(-center) @ T(t)
         # Note: The transformation goes from source to target, so we use
         # the forward transformation (not inverse)
         # Convert translation from normalized [-1,1] to pixels
@@ -699,11 +700,11 @@ class LogPolarSim2Net(nn.Module):
             ty * (H / 2),
         ], dim=-1)
 
-        # CRITICAL: Build homography with rotation/scale about IMAGE CENTER
+        # CRITICAL: Build similarity matrix with rotation/scale about IMAGE CENTER
         # This matches the convention used in synthetic data generation and
-        # standard image transformations. Without centering, the homography
-        # would rotate about the origin (0,0), causing large corner errors
-        # that increase with rotation angle.
+        # standard image transformations. Without centering, the similarity
+        # matrix would rotate about the origin (0,0), causing large corner
+        # errors that increase with rotation angle.
         center = torch.tensor([[W / 2.0, H / 2.0]], device=device, dtype=img_src.dtype)
         center = center.expand(B, -1)  # [B, 2]
 
@@ -731,6 +732,9 @@ class LogPolarSim2Net(nn.Module):
             "correlation_sr": sr_result["correlation"],
             "correlation_t": t_result["correlation"],
         }
+
+        # Alias: similarity_matrix for new API consumers
+        result["similarity_matrix"] = homography  # Alias for 'homography' key
 
         if return_aligned:
             result["img_aligned"] = img_aligned

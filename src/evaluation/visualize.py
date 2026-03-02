@@ -8,6 +8,8 @@ Generates figures for paper:
 4. Feature embeddings (t-SNE)
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any
 
